@@ -1,0 +1,214 @@
+module top_dut #(parameter ANCHO_PALABRA=32, parameter DIM=3, parameter NBITS_PRESC = 3)(
+    input clk_fast_top,
+    input rst_top,
+    input we_top,
+    input signal_top,
+    input [(ANCHO_PALABRA-1) :0] dataRAM_R1_top,
+    input [(ANCHO_PALABRA-1) :0] dataRAM_I1_top,
+    input [(ANCHO_PALABRA-1) :0] dataRAM_R2_top,
+    input [(ANCHO_PALABRA-1) :0] dataRAM_I2_top,
+    input [$clog2(DIM*DIM-1) :0] write_addr_R1_top,
+    input [$clog2(DIM*DIM-1) :0] write_addr_I1_top,
+    input [$clog2(DIM*DIM-1) :0] write_addr_R2_top,
+    input [$clog2(DIM*DIM-1) :0] write_addr_I2_top,
+	 
+	 
+    output signalGenAddr_top,
+    output signalAcum_top,
+    output signed [4:-27] a1_top,
+    output signed [4:-27] a2_top,
+    output signed [4:-27] b1_top,
+    output signed [4:-27] b2_top,
+    output clk_slow_top,
+    output flagR_top,
+    output flagI_top,
+    output [$clog2(DIM*DIM-1) :0] read_addr_M1_top,
+    output [$clog2(DIM*DIM-1) :0] read_addr_M2_top,
+    output signed [9:-22] a1b1_top,
+    output signed [9:-22] a2b2_top,
+    output signed [9:-22] a1b2_top,
+    output signed [9:-22] a2b1_top,
+    output signed [10:-21] ab_real_top,
+    output signed [10:-21] ab_imag_top,
+	 output signed [15:-16] accR_top,
+    output signed [15:-16] accI_top,
+	 
+	 output [$clog2(DIM*DIM-1) :0] cnt_top
+);
+
+
+//--------------------------------------------------------------------------
+//-------------------------------MAQUINA DE ESTADOS PARA SEÑALES DE OP------
+//--------------------------------------------------------------------------
+
+stateMachOperateSignals #( .DIM(DIM)) SIGNALSCONT(
+    .clk            (clk_slow_top),
+    .rst            (rst_top),
+    .signal         (signal_top),
+
+    .signalGenAddr  (signalGenAddr_top),
+    .signalAcum     (signalAcum_top)
+);
+
+//--------------------------------------------------------------------------
+//-------------------------------GENERADORES ADDR---------------------------
+//--------------------------------------------------------------------------
+StateMachineGenDir1 #(.DIM(DIM)) SM_GDM1(
+	.clk    (clk_slow_top), 
+	.ena    (signalGenAddr_top), 
+	.rst    (rst_top),
+
+	.flag   (),
+	.q      (read_addr_M1_top)
+);
+
+StateMachineGenDir2 #(.DIM(DIM)) SM_GDM2(
+	.clk    (clk_slow_top), 
+	.ena    (signalGenAddr_top), 
+	.rst    (rst_top),
+
+	.flag   (),
+	.q      (read_addr_M2_top)
+);
+
+//--------------------------------------------------------------------------
+//-------------------------------PRESCALER----------------------------------
+//--------------------------------------------------------------------------
+prescaler #(.NBITS(NBITS_PRESC)) PRESC(
+    .clk_fast     (clk_fast_top),
+    .rst          (rst_top),
+    
+    .clk_slow     (clk_slow_top)
+);
+
+//--------------------------------------------------------------------------
+//-------------------------------RAMS---------------------------------------
+//--------------------------------------------------------------------------
+simple_dual_port_ram #(.DATA_WIDTH(ANCHO_PALABRA), .ADDR_WIDTH($clog2(DIM*DIM-1)+1)) RAMR1(
+	.data           (dataRAM_R1_top),
+	.read_addr      (read_addr_M1_top), 
+    .write_addr     (write_addr_R1_top),
+	.we             (we_top), 
+    .clk            (clk_slow_top),
+    
+    .q              (a1_top)
+);
+
+simple_dual_port_ram #(.DATA_WIDTH(ANCHO_PALABRA), .ADDR_WIDTH($clog2(DIM*DIM-1)+1)) RAMI1(
+	.data           (dataRAM_I1_top),
+	.read_addr      (read_addr_M1_top), 
+    .write_addr     (write_addr_I1_top),
+	.we             (we_top), 
+    .clk            (clk_slow_top),
+    
+    .q              (a2_top)
+);
+
+simple_dual_port_ram #(.DATA_WIDTH(ANCHO_PALABRA), .ADDR_WIDTH($clog2(DIM*DIM-1)+1)) RAMR2(
+	.data           (dataRAM_R2_top),
+	.read_addr      (read_addr_M2_top), 
+    .write_addr     (write_addr_R2_top),
+	.we             (we_top), 
+    .clk            (clk_slow_top),
+    
+    .q              (b1_top)
+);
+
+simple_dual_port_ram #(.DATA_WIDTH(ANCHO_PALABRA), .ADDR_WIDTH($clog2(DIM*DIM-1)+1)) RAMI2(
+	.data           (dataRAM_I2_top),
+	.read_addr      (read_addr_M2_top), 
+    .write_addr     (write_addr_I2_top),
+	.we             (we_top), 
+    .clk            (clk_slow_top),
+    
+    .q              (b2_top)
+);
+
+//--------------------------------------------------------------------------
+//-------------------------------PRODUCTO----------------------------------
+//--------------------------------------------------------------------------
+prodtwo PROD(
+    .clk     (clk_fast_top), 
+    .rst     (rst_top),
+
+    .a1      (a1_top),
+    .a2      (a2_top),
+    .b1      (b1_top),
+    .b2      (b2_top),
+
+    .a1b1     (a1b1_top),
+    .a2b2     (a2b2_top),
+    .a1b2     (a1b2_top),
+    .a2b1     (a2b1_top)
+);
+
+//--------------------------------------------------------------------------
+//-------------------------------SUMAS--------------------------------------
+//--------------------------------------------------------------------------
+sumtwo SUM(
+    .clk      (clk_fast_top), 
+    .rst      (rst_top),
+    .a1b1     (a1b1_top),
+    .a2b2     (a2b2_top),
+    .a1b2     (a1b2_top),
+    .a2b1     (a2b1_top),
+
+    .ab_real     (ab_real_top),
+    .ab_imag     (ab_imag_top)
+);
+
+//--------------------------------------------------------------------------
+//-------------------------------ACUMULADORES-------------------------------
+//--------------------------------------------------------------------------
+accum #(.DIM(DIM)) ACUMR(
+    .clk     (clk_slow_top), 
+    .rst     (rst_top), 
+    .ena     (signalAcum_top),
+    .data    (ab_real_top),
+
+    .flag     (flagR_top),
+	.acc      (accR_top)
+);
+
+accum #(.DIM(DIM)) ACUMI(
+    .clk     (clk_slow_top), 
+    .rst     (rst_top), 
+    .ena     (signalAcum_top),
+    .data    (ab_imag_top),
+
+    .flag     (flagI_top),
+	.acc      (accI_top)
+);
+
+//R
+
+simple_dual_port_ram #(.DATA_WIDTH(ANCHO_PALABRA), .ADDR_WIDTH($clog2(DIM*DIM-1)+1)) RAM_outR(
+	.data           (accR_top),
+	.read_addr      (), 
+    .write_addr     (cnt_top),
+	.we             (flagR_top), 
+    .clk            (clk_fast_top),
+    
+    .q              ()
+);
+
+simple_dual_port_ram #(.DATA_WIDTH(ANCHO_PALABRA), .ADDR_WIDTH($clog2(DIM*DIM-1)+1)) RAM_outI(
+	.data           (accI_top),
+	.read_addr      (), 
+    .write_addr     (cnt_top),
+	.we             (flagI_top), 
+    .clk            (clk_slow_top),
+    
+    .q              ()
+);
+
+
+contadorDirRamOut #(	.DIM(DIM)) CNTDIRAMOUT(
+	.clk				(clk_slow_top), 
+	.rst				(rst_top),
+	.signalUp		(flagR_top),
+	
+	.cnt				(cnt_top)
+);
+
+endmodule
